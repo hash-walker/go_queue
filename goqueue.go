@@ -5,14 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
-
-	uuid "github.com/jackc/pgx/pgtype/ext/satori-uuid"
-	"github.com/redis/go-redis/v9"
 )
-
-type RedisConfig struct {
-	Client *redis.Client
-}
 
 type Config struct {
 	// Required
@@ -46,9 +39,11 @@ type WorkerPool struct { /* unexported fields */
 
 func New(cfg Config) (*WorkerPool, error)
 func (wp *WorkerPool) Register(jobType string, handler HandlerFunc)
-func (wp *WorkerPool) Enqueue(ctx context.Context, jobType string, payload any, opts ...Option) (uuid.UUID, error)
+
+// func (wp *WorkerPool) Enqueue(ctx context.Context, jobType string, payload any, opts ...Option) (uuid.UUID, error)
 func (wp *WorkerPool) Start(ctx context.Context) error    // blocks, runs workers
 func (wp *WorkerPool) Shutdown(ctx context.Context) error // graceful drain
 func (wp *WorkerPool) DashboardHandler() http.Handler
 func (wp *WorkerPool) StatsHandler() http.Handler
-func (wp *WorkerPool) Stats(ctx context.Context) (QueueStats, error)
+
+// func (wp *WorkerPool) Stats(ctx context.Context) (QueueStats, error)

@@ -1,4 +1,6 @@
+package main
 
+import "context"
 
 type HandlerFunc func(ctx context.Context, job Job) error
 

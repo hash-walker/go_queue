@@ -1,10 +1,8 @@
-package goqueue
+package main
 
 import (
 	"encoding/json"
 	"time"
-
-	uuid "github.com/jackc/pgx/pgtype/ext/satori-uuid"
 )
 
 type JobStatus string
@@ -17,7 +15,7 @@ const (
 )
 
 type Job struct {
-	ID         uuid.UUID       `json:"id"`
+	// ID         uuid.UUID       `json:"id"`
 	Type       string          `json:"type"`
 	Payload    json.RawMessage `json:"payload"`
 	Status     JobStatus       `json:"status"`
@@ -33,8 +31,8 @@ type Job struct {
 func (j Job) UnmarshalPayload(v any) error // convenience
 
 // Functional options
-type Option func(*enqueueOpts)
+// type Option func(*enqueueOpts)
 
-func WithPriority(p int) Option
-func WithMaxRetries(n int) Option
-func WithDelay(d time.Duration) Option
+// func WithPriority(p int) Option
+// func WithMaxRetries(n int) Option
+// func WithDelay(d time.Duration) Option

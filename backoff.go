@@ -1,3 +1,7 @@
+package main
+
+import "time"
+
 type BackoffConfig struct {
 	Base       time.Duration // 1s
 	Max        time.Duration // 5m
