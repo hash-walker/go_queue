@@ -30,11 +30,26 @@ type Job struct {
 	UpdatedAt  time.Time       `json:"updated_at"`
 }
 
-func (j Job) UnmarshalPayload(v any) error // convenience
+type JobOption func(*Job)
 
-// Functional options
-// type Option func(*enqueueOpts)
+func WithPriority(priority int) JobOption {
+	return func(j *Job) {
+		j.Priority = priority
+	}
+}
 
-// func WithPriority(p int) Option
-// func WithMaxRetries(n int) Option
-// func WithDelay(d time.Duration) Option
+func WithRunAt(runAt time.Time) JobOption {
+	return func(j *Job) {
+		j.RunAt = runAt
+	}
+}
+
+func WithMaxRetries(maxRetries int) JobOption {
+	return func(j *Job) {
+		j.MaxRetries = maxRetries
+	}
+}
+
+func (j Job) UnmarshalPayload(v any) error {
+	return json.Unmarshal(j.Payload, v)
+}
