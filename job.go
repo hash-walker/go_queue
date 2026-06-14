@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type JobStatus string
@@ -15,7 +17,7 @@ const (
 )
 
 type Job struct {
-	// ID         uuid.UUID       `json:"id"`
+	ID         uuid.UUID       `json:"id"`
 	Type       string          `json:"type"`
 	Payload    json.RawMessage `json:"payload"`
 	Status     JobStatus       `json:"status"`
