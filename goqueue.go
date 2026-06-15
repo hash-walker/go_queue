@@ -30,10 +30,10 @@ type Config struct {
 	TableName  string
 
 	// Retry
-	MaxRetries  int
-	BackoffBase time.Duration
-	BackoffMax  time.Duration
-	BackoffMult float64
+	MaxRetries   int
+	BackoffBase  time.Duration
+	BackoffMax   time.Duration
+	BackoffMulti float64
 
 	// Logging
 	Logger *slog.Logger
@@ -49,7 +49,7 @@ type WorkerPool struct {
 	logger *slog.Logger
 
 	handlers   map[string]HandlerFunc
-	handlerMut sync.Mutex
+	handlerMut sync.RWMutex
 
 	// Lifecycle state
 	cancel context.CancelFunc
@@ -63,6 +63,24 @@ func NewWorkerPool(db PoolInterface, cfg Config) *WorkerPool {
 		logger:   cfg.Logger,
 		handlers: make(map[string]HandlerFunc),
 	}
+}
+
+func (wp *WorkerPool) Register(jobType string, handler HandlerFunc) error {
+
+	wp.handlerMut.Lock()
+	defer wp.handlerMut.Unlock()
+
+	if wp.handlers == nil {
+		wp.handlers = make(map[string]HandlerFunc)
+	}
+
+	if _, exists := wp.handlers[jobType]; exists {
+		return fmt.Errorf("handler for job type '%s' already registered", jobType)
+	}
+
+	wp.handlers[jobType] = handler
+
+	return nil
 }
 
 func (wp *WorkerPool) Enqueue(ctx context.Context, db PoolInterface, jobType string, payload any, opts ...JobOption) (uuid.UUID, error) {
@@ -90,4 +108,42 @@ func (wp *WorkerPool) Enqueue(ctx context.Context, db PoolInterface, jobType str
 	}
 
 	return insertJob(ctx, db, job)
+}
+
+func (wp *WorkerPool) Start(ctx context.Context) error {
+	for i := range wp.cfg.Concurrency {
+		go func(workerID int) {
+			ticker := time.NewTicker(wp.cfg.BackoffBase)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					wp.processNextJob(ctx)
+				}
+			}
+		}(i)
+	}
+	return nil
+}
+
+func (wp *WorkerPool) processNextJob(ctx context.Context) {
+
+	job, err := fetchJob(ctx, wp.db)
+
+	if err != nil {
+		return
+	}
+
+	handler := wp.handlers[job.Type]
+
+	processErr := handler(ctx, job)
+
+	if processErr != nil {
+
+	} else {
+		err = completeJob(ctx, wp.db, job.ID)
+	}
+
 }

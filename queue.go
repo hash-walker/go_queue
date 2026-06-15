@@ -2,10 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
+
+var ErrJobNotFoundOrInvalidState = fmt.Errorf("job not found or not in 'running' state")
 
 func insertJob(ctx context.Context, db PoolInterface, job Job) (uuid.UUID, error) {
 
@@ -28,4 +32,57 @@ func insertJob(ctx context.Context, db PoolInterface, job Job) (uuid.UUID, error
 	}
 
 	return returnedID, nil
+}
+
+func fetchJob(ctx context.Context, db PoolInterface) (Job, error) {
+
+	const sql = `
+		UPDATE goqueue_jobs 
+		SET status = 'running', updated_at = NOW()
+		WHERE id = (
+		    SELECT id
+		    FROM goqueue_jobs
+		    WHERE status = 'pending' AND run_at <= NOW()
+		    ORDER BY priority DESC
+		    LIMIT 1
+		    FOR UPDATE SKIP LOCKED
+		)
+		RETURNING id, job_type, payload, status, priority, 
+                 run_at, retry_count, max_retries, created_at, updated_at;
+`
+	var job Job
+	err := db.QueryRow(ctx, sql).Scan(&job.ID, &job.Type, &job.Payload, &job.Status, &job.Priority,
+		&job.RunAt, &job.RetryCount, &job.MaxRetries, &job.CreatedAt, &job.UpdatedAt)
+
+	if err != nil {
+		// Handle the normal case: the queue is empty
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Job{}, nil
+		}
+
+		// Handle actual database failures
+		return Job{}, fmt.Errorf("failed to fetch job: %w", err)
+	}
+
+	return job, nil
+}
+
+func completeJob(ctx context.Context, db PoolInterface, jobID uuid.UUID) error {
+	const sql = `
+		UPDATE goqueue_jobs
+		SET status = 'complete', updated_at = NOW()
+		WHERE id = $1 AND status = 'running';
+`
+
+	tag, err := db.Exec(ctx, sql, jobID)
+
+	if err != nil {
+		return fmt.Errorf("failed to complete job %s: %w", jobID, err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return ErrJobNotFoundOrInvalidState
+	}
+
+	return nil
 }
