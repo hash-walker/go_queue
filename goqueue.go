@@ -132,6 +132,8 @@ func (wp *WorkerPool) processNextJob(ctx context.Context) {
 
 	job, err := fetchJob(ctx, wp.db)
 
+	cfg := NewBackoffConfig(1*time.Second, 1*time.Minute, 2.0)
+
 	if err != nil {
 		return
 	}
@@ -142,6 +144,11 @@ func (wp *WorkerPool) processNextJob(ctx context.Context) {
 
 	if processErr != nil {
 
+		runAt := calculateBackoff(job.RetryCount, *cfg)
+
+		runTime := time.Now().Add(runAt)
+
+		failedJob(ctx, wp.db, job.ID, runTime, processErr)
 	} else {
 		err = completeJob(ctx, wp.db, job.ID)
 	}

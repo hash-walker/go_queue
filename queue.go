@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 var ErrJobNotFoundOrInvalidState = fmt.Errorf("job not found or not in 'running' state")
@@ -85,4 +87,37 @@ func completeJob(ctx context.Context, db PoolInterface, jobID uuid.UUID) error {
 	}
 
 	return nil
+}
+
+func failedJob(ctx context.Context, db PoolInterface, jobID uuid.UUID, runAt time.Time, err error) {
+	errTxt := StringToText(err.Error())
+
+	const sql = `
+				UPDATE goqueue_jobs
+				SET status = CASE WHEN retry_count < max_retries THEN 'pending' ELSE 'failed' END,
+				    last_error = $3,
+					retry_count = retry_count + 1,
+				run_at = CASE 
+				WHEN retry_count < max_retries THEN $2
+				ELSE run_at
+				END,
+				update_at = NOW()
+			WHERE id = $1;
+`
+
+	runTime := TimeToPgTime(runAt)
+
+	_, err = db.Exec(ctx, sql, jobID, runTime, errTxt)
+
+}
+
+func TimeToPgTime(goTime time.Time) pgtype.Timestamp {
+	return pgtype.Timestamp{Time: goTime, Valid: !goTime.IsZero()}
+}
+
+func StringToText(s string) pgtype.Text {
+	return pgtype.Text{
+		String: s,
+		Valid:  s != "",
+	}
 }
