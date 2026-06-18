@@ -135,7 +135,11 @@ func (wp *WorkerPool) Enqueue(ctx context.Context, db PoolInterface, jobType str
 func (wp *WorkerPool) Start(ctx context.Context) error {
 	for i := range wp.cfg.Concurrency {
 
+		wp.wg.Add(1)
+
 		go func(workerID int) {
+			defer wp.wg.Done()
+
 			ticker := time.NewTicker(wp.cfg.PollInterval)
 			defer ticker.Stop()
 
@@ -158,6 +162,25 @@ func (wp *WorkerPool) Start(ctx context.Context) error {
 		}(i)
 	}
 	return nil
+}
+
+// Shutdown gracefully waits for all active workers to finish their current jobs.
+// It blocks until all workers have exited, or until the provided context expires.
+func (wp *WorkerPool) Shutdown(ctx context.Context) error {
+	waitChan := make(chan struct{})
+
+	go func() {
+		wp.wg.Wait()
+		close(waitChan)
+	}()
+
+	select {
+	case <-waitChan:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
 }
 
 func (wp *WorkerPool) processNextJob(ctx context.Context) bool {
