@@ -1,4 +1,4 @@
-package main
+package goqueue
 
 import (
 	"context"
@@ -13,16 +13,16 @@ import (
 
 var ErrJobNotFoundOrInvalidState = fmt.Errorf("job not found or not in 'running' state")
 
-func insertJob(ctx context.Context, db PoolInterface, job Job) (uuid.UUID, error) {
+func insertJob(ctx context.Context, db PoolInterface, table string, job Job) (uuid.UUID, error) {
 
-	const sql = `
-		INSERT INTO goqueue_jobs (
+	sql := fmt.Sprintf(`
+		INSERT INTO %s (
 		    job_type, payload, status, priority,
 		    run_at, retry_count, max_retries, created_at, updated_at
 		) VALUES (
 		    $1, $2, $3, $4, $5, $6, $7, $8, $9
 		) RETURNING id;
-`
+`, table)
 
 	var returnedID uuid.UUID
 
@@ -36,22 +36,23 @@ func insertJob(ctx context.Context, db PoolInterface, job Job) (uuid.UUID, error
 	return returnedID, nil
 }
 
-func fetchJob(ctx context.Context, db PoolInterface) (Job, error) {
+func fetchJob(ctx context.Context, db PoolInterface, table string) (Job, error) {
 
-	const sql = `
-		UPDATE goqueue_jobs 
+	sql := fmt.Sprintf(`
+		UPDATE %s
 		SET status = 'running', updated_at = NOW()
 		WHERE id = (
 		    SELECT id
-		    FROM goqueue_jobs
+		    FROM %s
 		    WHERE status = 'pending' AND run_at <= NOW()
 		    ORDER BY priority DESC
 		    LIMIT 1
 		    FOR UPDATE SKIP LOCKED
 		)
-		RETURNING id, job_type, payload, status, priority, 
+		RETURNING id, job_type, payload, status, priority,
                  run_at, retry_count, max_retries, created_at, updated_at;
-`
+`, table, table)
+
 	var job Job
 	err := db.QueryRow(ctx, sql).Scan(&job.ID, &job.Type, &job.Payload, &job.Status, &job.Priority,
 		&job.RunAt, &job.RetryCount, &job.MaxRetries, &job.CreatedAt, &job.UpdatedAt)
@@ -69,12 +70,12 @@ func fetchJob(ctx context.Context, db PoolInterface) (Job, error) {
 	return job, nil
 }
 
-func completeJob(ctx context.Context, db PoolInterface, jobID uuid.UUID) error {
-	const sql = `
-		UPDATE goqueue_jobs
+func completeJob(ctx context.Context, db PoolInterface, table string, jobID uuid.UUID) error {
+	sql := fmt.Sprintf(`
+		UPDATE %s
 		SET status = 'complete', updated_at = NOW()
 		WHERE id = $1 AND status = 'running';
-`
+`, table)
 
 	tag, err := db.Exec(ctx, sql, jobID)
 
@@ -89,21 +90,21 @@ func completeJob(ctx context.Context, db PoolInterface, jobID uuid.UUID) error {
 	return nil
 }
 
-func failedJob(ctx context.Context, db PoolInterface, jobID uuid.UUID, runAt time.Time, err error) {
+func failedJob(ctx context.Context, db PoolInterface, table string, jobID uuid.UUID, runAt time.Time, err error) {
 	errTxt := StringToText(err.Error())
 
-	const sql = `
-				UPDATE goqueue_jobs
-				SET status = CASE WHEN retry_count < max_retries THEN 'pending' ELSE 'failed' END,
-				    last_error = $3,
-					retry_count = retry_count + 1,
-				run_at = CASE 
-				WHEN retry_count < max_retries THEN $2
-				ELSE run_at
-				END,
-				update_at = NOW()
-			WHERE id = $1;
-`
+	sql := fmt.Sprintf(`
+		UPDATE %s
+		SET status = CASE WHEN retry_count < max_retries THEN 'pending' ELSE 'failed' END,
+		    last_error = $3,
+			retry_count = retry_count + 1,
+		run_at = CASE
+		WHEN retry_count < max_retries THEN $2
+		ELSE run_at
+		END,
+		updated_at = NOW()
+		WHERE id = $1;
+`, table)
 
 	runTime := TimeToPgTime(runAt)
 

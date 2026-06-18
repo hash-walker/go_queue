@@ -1,10 +1,8 @@
-package main
+package goqueue
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"log/slog"
@@ -92,6 +90,11 @@ func NewWorkerPool(ctx context.Context, db PoolInterface, cfg Config) (*WorkerPo
 	}, nil
 }
 
+// tableFQN returns the fully-qualified table name as "schema.table".
+func (wp *WorkerPool) tableFQN() string {
+	return wp.cfg.SchemaName + "." + wp.cfg.TableName
+}
+
 func (wp *WorkerPool) Register(jobType string, handler HandlerFunc) error {
 
 	wp.handlerMut.Lock()
@@ -134,7 +137,7 @@ func (wp *WorkerPool) Enqueue(ctx context.Context, db PoolInterface, jobType str
 		opt(&job)
 	}
 
-	return insertJob(ctx, db, job)
+	return insertJob(ctx, db, wp.tableFQN(), job)
 }
 
 // Start launches the background workers and begins processing jobs.
@@ -199,15 +202,15 @@ func (wp *WorkerPool) Shutdown(ctx context.Context) error {
 
 func (wp *WorkerPool) processNextJob(ctx context.Context) bool {
 
-	job, err := fetchJob(ctx, wp.db)
+	job, err := fetchJob(ctx, wp.db, wp.tableFQN())
 
 	if err != nil {
-
-		if errors.Is(err, sql.ErrNoRows) {
-			return false
-		}
-
 		log.Printf("Database failure: %v", err)
+		return false
+	}
+
+	// fetchJob returns an empty Job (zero-value ID) when the queue is empty
+	if job.ID == (uuid.UUID{}) {
 		return false
 	}
 
@@ -221,9 +224,9 @@ func (wp *WorkerPool) processNextJob(ctx context.Context) bool {
 
 		runTime := time.Now().Add(runAt)
 
-		failedJob(ctx, wp.db, job.ID, runTime, processErr)
+		failedJob(ctx, wp.db, wp.tableFQN(), job.ID, runTime, processErr)
 	} else {
-		err = completeJob(ctx, wp.db, job.ID)
+		err = completeJob(ctx, wp.db, wp.tableFQN(), job.ID)
 	}
 
 	return true

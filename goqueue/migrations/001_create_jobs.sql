@@ -14,4 +14,3 @@ CREATE TABLE IF NOT EXISTS {schema}.{table} (
 
 CREATE INDEX IF NOT EXISTS idx_{table}_fetch 
     ON {schema}.{table}(status, priority DESC, run_at) WHERE status NOT IN ('completed', 'failed');
-

@@ -1,0 +1,13 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: goqueue_demo
+      POSTGRES_PASSWORD: secret
+    ports: ["5432:5432"]
+
+  worker:
+    build: ..
+    depends_on: [postgres]
+    environment:
+      DATABASE_URL: postgres://postgres:secret@postgres:5432/goqueue_demo

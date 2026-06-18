@@ -1,4 +1,4 @@
-package main
+package goqueue
 
 import (
 	"context"
@@ -16,7 +16,7 @@ func runMigrations(ctx context.Context, db PoolInterface, schemaName string, tab
 	}
 
 	if tableName == "" {
-		tableName = "goqueue_job"
+		tableName = "goqueue_jobs"
 	}
 
 	sql := createJobsSql

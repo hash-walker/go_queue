@@ -1,4 +1,4 @@
-package main
+package goqueue
 
 import (
 	"encoding/json"
@@ -47,6 +47,12 @@ func WithRunAt(runAt time.Time) JobOption {
 func WithMaxRetries(maxRetries int) JobOption {
 	return func(j *Job) {
 		j.MaxRetries = maxRetries
+	}
+}
+
+func WithDelay(d time.Duration) JobOption {
+	return func(j *Job) {
+		j.RunAt = time.Now().Add(d)
 	}
 }
 
