@@ -34,8 +34,9 @@ type Config struct {
 	PollInterval time.Duration // The baseline sleep duration when the queue is empty.
 
 	// Table
-	SchemaName string
-	TableName  string
+	SchemaName  string
+	TableName   string
+	AutoMigrate bool
 
 	// Retry
 	MaxRetries   int
@@ -69,13 +70,26 @@ type WorkerPool struct {
 	wg     sync.WaitGroup
 }
 
-func NewWorkerPool(db PoolInterface, cfg Config) *WorkerPool {
+func NewWorkerPool(ctx context.Context, db PoolInterface, cfg Config) (*WorkerPool, error) {
+
+	if cfg.SchemaName == "" {
+		cfg.SchemaName = "public"
+	}
+	if cfg.TableName == "" {
+		cfg.TableName = "goqueue_jobs"
+	}
+	if cfg.AutoMigrate {
+		if err := runMigrations(ctx, db, cfg.SchemaName, cfg.TableName); err != nil {
+			return nil, err
+		}
+	}
+
 	return &WorkerPool{
 		db:       db,
 		cfg:      cfg,
 		logger:   cfg.Logger,
 		handlers: make(map[string]HandlerFunc),
-	}
+	}, nil
 }
 
 func (wp *WorkerPool) Register(jobType string, handler HandlerFunc) error {
