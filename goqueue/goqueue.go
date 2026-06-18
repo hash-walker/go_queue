@@ -76,6 +76,25 @@ func NewWorkerPool(ctx context.Context, db PoolInterface, cfg Config) (*WorkerPo
 	if cfg.TableName == "" {
 		cfg.TableName = "goqueue_jobs"
 	}
+	if cfg.Concurrency == 0 {
+		cfg.Concurrency = 1
+	}
+	if cfg.PollInterval == 0 {
+		cfg.PollInterval = 5 * time.Second
+	}
+	if cfg.MaxRetries == 0 {
+		cfg.MaxRetries = 3
+	}
+	if cfg.BackoffBase == 0 {
+		cfg.BackoffBase = 1 * time.Second
+	}
+	if cfg.BackoffMulti == 0 {
+		cfg.BackoffMulti = 2.0 // doubles the delay on each retry: 1s, 2s, 4s, 8s...
+	}
+	if cfg.BackoffMax == 0 {
+		cfg.BackoffMax = 1 * time.Hour
+	}
+
 	if cfg.AutoMigrate {
 		if err := runMigrations(ctx, db, cfg.SchemaName, cfg.TableName); err != nil {
 			return nil, err
@@ -214,7 +233,17 @@ func (wp *WorkerPool) processNextJob(ctx context.Context) bool {
 		return false
 	}
 
-	handler := wp.handlers[job.Type]
+	// Look up handler under read lock to avoid data race with Register
+	wp.handlerMut.RLock()
+	handler, ok := wp.handlers[job.Type]
+	wp.handlerMut.RUnlock()
+
+	if !ok || handler == nil {
+		// No handler registered — fail the job immediately so it doesn't block the queue
+		log.Printf("No handler registered for job type '%s' (job %s)", job.Type, job.ID)
+		failedJob(ctx, wp.db, wp.tableFQN(), job.ID, time.Now(), fmt.Errorf("no handler registered for job type '%s'", job.Type))
+		return true
+	}
 
 	processErr := handler(ctx, job)
 
@@ -226,7 +255,9 @@ func (wp *WorkerPool) processNextJob(ctx context.Context) bool {
 
 		failedJob(ctx, wp.db, wp.tableFQN(), job.ID, runTime, processErr)
 	} else {
-		err = completeJob(ctx, wp.db, wp.tableFQN(), job.ID)
+		if err := completeJob(ctx, wp.db, wp.tableFQN(), job.ID); err != nil {
+			log.Printf("Failed to mark job %s complete: %v", job.ID, err)
+		}
 	}
 
 	return true

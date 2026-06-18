@@ -54,15 +54,19 @@ func main() {
 	}
 
 	// Register handlers
-	pool.Register("send_email", func(ctx context.Context, job goqueue.Job) error {
+	if err := pool.Register("send_email", func(ctx context.Context, job goqueue.Job) error {
 		var payload EmailPayload
 		if err := job.UnmarshalPayload(&payload); err != nil {
 			return err
 		}
 		return sendEmail(payload.To, payload.Subject, payload.Body)
-	})
+	}); err != nil {
+		log.Fatalf("failed to register send_email handler: %v", err)
+	}
 
-	pool.Register("process_payment", handlePayment)
+	if err := pool.Register("process_payment", handlePayment); err != nil {
+		log.Fatalf("failed to register process_payment handler: %v", err)
+	}
 
 	// Enqueue jobs
 	payload1 := EmailPayload{
