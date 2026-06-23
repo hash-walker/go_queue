@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/hash-walker/goqueue"
+	"github.com/hash-walker/go_queue"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

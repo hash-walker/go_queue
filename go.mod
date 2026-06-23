@@ -1,4 +1,4 @@
-module github.com/hash-walker/goqueue
+module github.com/hash-walker/go_queue
 
 go 1.25.0
 

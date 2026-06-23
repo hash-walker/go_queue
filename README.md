@@ -23,7 +23,7 @@ A simple, reliable, PostgreSQL-backed background job queue for Go.
 ## Installation
 
 ```bash
-go get github.com/hash-walker/goqueue
+go get github.com/hash-walker/go_queue
 ```
 
 Requires Go 1.25+ and PostgreSQL.
@@ -41,7 +41,7 @@ import (
     "os"
     "time"
 
-    "github.com/hash-walker/goqueue"
+    "github.com/hash-walker/go_queue"
     "github.com/jackc/pgx/v5/pgxpool"
 )
 
