@@ -70,12 +70,20 @@ func fetchJob(ctx context.Context, db PoolInterface, table string) (Job, error) 
 	return job, nil
 }
 
-func completeJob(ctx context.Context, db PoolInterface, table string, jobID uuid.UUID) error {
-	sql := fmt.Sprintf(`
-		UPDATE %s
-		SET status = 'complete', updated_at = NOW()
-		WHERE id = $1 AND status = 'running';
-`, table)
+func completeJob(ctx context.Context, db PoolInterface, table string, jobID uuid.UUID, deleteOnComplete bool) error {
+	var sql string
+	if deleteOnComplete {
+		sql = fmt.Sprintf(`
+			DELETE FROM %s
+			WHERE id = $1 AND status = 'running';
+		`, table)
+	} else {
+		sql = fmt.Sprintf(`
+			UPDATE %s
+			SET status = 'complete', updated_at = NOW()
+			WHERE id = $1 AND status = 'running';
+		`, table)
+	}
 
 	tag, err := db.Exec(ctx, sql, jobID)
 
@@ -121,4 +129,14 @@ func StringToText(s string) pgtype.Text {
 		String: s,
 		Valid:  s != "",
 	}
+}
+
+func pruneJobs(ctx context.Context, db PoolInterface, table string, retentionPeriod time.Duration) error {
+	sql := fmt.Sprintf(`
+		DELETE FROM %s
+		WHERE status IN ('complete', 'failed') AND updated_at <= NOW() - INTERVAL '%f seconds';
+`, table, retentionPeriod.Seconds())
+
+	_, err := db.Exec(ctx, sql)
+	return err
 }

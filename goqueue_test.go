@@ -581,3 +581,61 @@ func TestStringToText_Empty(t *testing.T) {
 		t.Error("StringToText: Valid should be false for empty string")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Pruning and Completion helpers
+// ---------------------------------------------------------------------------
+
+func TestCompleteJob_Update(t *testing.T) {
+	var execSQL string
+	db := &mockDB{
+		execFn: func(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error) {
+			execSQL = sql
+			return pgconn.NewCommandTag("UPDATE 1"), nil
+		},
+	}
+	err := completeJob(context.Background(), db, "jobs", uuid.New(), false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(execSQL, "UPDATE") || strings.Contains(execSQL, "DELETE") {
+		t.Errorf("expected UPDATE statement, got: %s", execSQL)
+	}
+}
+
+func TestCompleteJob_Delete(t *testing.T) {
+	var execSQL string
+	db := &mockDB{
+		execFn: func(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error) {
+			execSQL = sql
+			return pgconn.NewCommandTag("DELETE 1"), nil
+		},
+	}
+	err := completeJob(context.Background(), db, "jobs", uuid.New(), true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(execSQL, "DELETE") || strings.Contains(execSQL, "UPDATE") {
+		t.Errorf("expected DELETE statement, got: %s", execSQL)
+	}
+}
+
+func TestPruneJobs(t *testing.T) {
+	var execSQL string
+	db := &mockDB{
+		execFn: func(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error) {
+			execSQL = sql
+			return pgconn.NewCommandTag("DELETE 10"), nil
+		},
+	}
+	err := pruneJobs(context.Background(), db, "jobs", 24*time.Hour)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(execSQL, "DELETE") {
+		t.Errorf("expected DELETE statement, got: %s", execSQL)
+	}
+	if !strings.Contains(execSQL, "86400") { // 24 hours in seconds
+		t.Errorf("expected 86400 seconds in interval, got: %s", execSQL)
+	}
+}

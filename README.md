@@ -130,6 +130,11 @@ pool, err := goqueue.NewWorkerPool(ctx, db, goqueue.Config{
     BackoffMulti: 2.0,           // default: 2.0 — multiplier (2.0 = doubles each attempt)
     BackoffMax:   time.Hour,     // default: 1h — soft ceiling on backoff delay
 
+    // Pruning
+    DeleteOnComplete: true,             // default: false — DELETE jobs upon completion instead of marking 'complete'
+    RetentionPeriod:  24 * time.Hour,   // default: 0 — periodically DELETE completed/failed jobs older than this
+    PruneInterval:    1 * time.Hour,    // default: 1h — how often the background pruner runs
+
     // Logging
     Logger: slog.Default(),     // default: nil (falls back to log.Printf)
 })
@@ -148,6 +153,9 @@ pool, err := goqueue.NewWorkerPool(ctx, db, goqueue.Config{
 | `BackoffBase` | `1s` | Starting delay for retry backoff |
 | `BackoffMulti` | `2.0` | Exponential multiplier (`2.0` = 1s → 2s → 4s → 8s…) |
 | `BackoffMax` | `1h` | Soft ceiling; delay will not exceed this value |
+| `DeleteOnComplete`| `false` | If true, jobs are deleted immediately after completion |
+| `RetentionPeriod` | `0` | Delete completed/failed jobs older than this duration |
+| `PruneInterval` | `1h` | How often the background pruner wakes up to delete old jobs |
 
 ---
 

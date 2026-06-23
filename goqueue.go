@@ -44,6 +44,11 @@ type Config struct {
 
 	// Logging
 	Logger *slog.Logger
+
+	// Pruning
+	DeleteOnComplete bool          // If true, jobs are deleted instead of marked 'complete'
+	RetentionPeriod  time.Duration // If > 0, background pruner deletes completed/failed jobs older than this
+	PruneInterval    time.Duration // How often the background pruner runs (default: 1 hour)
 }
 
 // WorkerPool is a highly concurrent, stateless job processing engine.
@@ -93,6 +98,9 @@ func NewWorkerPool(ctx context.Context, db PoolInterface, cfg Config) (*WorkerPo
 	}
 	if cfg.BackoffMax == 0 {
 		cfg.BackoffMax = 1 * time.Hour
+	}
+	if cfg.PruneInterval == 0 {
+		cfg.PruneInterval = 1 * time.Hour
 	}
 
 	if cfg.AutoMigrate {
@@ -169,6 +177,31 @@ func (wp *WorkerPool) Enqueue(ctx context.Context, db PoolInterface, jobType str
 // To perform a graceful shutdown, cancel the provided context. Workers
 // will finish their active job and cleanly exit their goroutine.
 func (wp *WorkerPool) Start(ctx context.Context) error {
+	if wp.cfg.RetentionPeriod > 0 {
+		wp.wg.Add(1)
+		go func() {
+			defer wp.wg.Done()
+			ticker := time.NewTicker(wp.cfg.PruneInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					pruneCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					if err := pruneJobs(pruneCtx, wp.db, wp.tableFQN(), wp.cfg.RetentionPeriod); err != nil {
+						if wp.logger != nil {
+							wp.logger.Error("failed to prune jobs", "error", err)
+						} else {
+							log.Printf("failed to prune jobs: %v", err)
+						}
+					}
+					cancel()
+				}
+			}
+		}()
+	}
+
 	for i := range wp.cfg.Concurrency {
 
 		wp.wg.Add(1)
@@ -255,7 +288,7 @@ func (wp *WorkerPool) processNextJob(ctx context.Context) bool {
 
 		failedJob(ctx, wp.db, wp.tableFQN(), job.ID, runTime, processErr)
 	} else {
-		if err := completeJob(ctx, wp.db, wp.tableFQN(), job.ID); err != nil {
+		if err := completeJob(ctx, wp.db, wp.tableFQN(), job.ID, wp.cfg.DeleteOnComplete); err != nil {
 			log.Printf("Failed to mark job %s complete: %v", job.ID, err)
 		}
 	}
